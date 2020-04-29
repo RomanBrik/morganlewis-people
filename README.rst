@@ -10,8 +10,8 @@ Requirements
 ================
 Python pakages::
 
-    1. Scrapy
-    2. Scrapy-splash
+    1. scrapy
+    2. scrapy-splash
 
 Configuration
 ================
