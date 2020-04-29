@@ -88,7 +88,8 @@ class PeopleSpider(scrapy.Spider):
             response.xpath('//h2[text()="Sectors"]/following-sibling::ul/li/a/text()').extract()
 
         item['publications'] = [
-            f"{publist.xpath('span/text()').get()} - {publist.xpath('text()').get().lstrip(' -')}"
+            f"{publist.xpath('span/text()').get()} - {publist.xpath('text()').get().lstrip(' -')}"\
+                .replace('\n', '').replace('\t', '')
             for publist
             in response.xpath('//div[@class="hidden-cont" or @id="pubexpandlist"]/p/a[not(@data-show)]')
         ]
