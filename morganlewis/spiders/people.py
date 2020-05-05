@@ -80,7 +80,7 @@ class People2Spider(scrapy.Spider):
         selector = scrapy.selector.Selector(text=pub_response.text)
 
         item['publications'] = [
-            f'{sel.xpath("span/text()").get()}{sel.xpath("text()").get()}'.replace('\n', '')
+            sel.xpath('string(.)').get()
             for sel
             in selector.xpath('//a[not(@class="more")]')
         ]
