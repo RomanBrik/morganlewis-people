@@ -1,68 +1,51 @@
 # -*- coding: utf-8 -*-
-import urllib.request
+from string import Template
 from datetime import datetime
 
-from scrapy import Spider
-from scrapy.selector import Selector
-from scrapy_splash import SplashRequest
+import scrapy
+import requests
 
-from ..items import MorganlewisItem
+from ..items import PeopleItem
 
 
-class PeopleSpider(Spider):
+class People2Spider(scrapy.Spider):
     name = 'people'
-    allowed_domains = ['morganlewis.com']
-    start_urls = ['https://www.morganlewis.com/our-people/']
-    script_load_publist = """
-    function main(splash)
-      local url = splash.args.url
-      assert(splash:go(url))
-      assert(splash:wait(1))
-    
-      splash:runjs('document.getElementById("publist").click()')
-      assert(splash:wait(3))
-      splash:runjs('document.getElementById("pubviewmoreless").click()')
-      assert(splash:wait(3))
-      
-      return {
-        html = splash:html()
-      }
-    end   
-    """
+
+    def __init__(self, *args, **kwargs):
+        self.items_per_page = 100
+        self.page = 1
+        self.url_api = Template(
+            'https://www.morganlewis.com/api/sitecore/searchredesign/peopleresultslisting?'
+            'keyword=&category=bb82d24a9d7a45bd938533994c4e775a&sortBy=lastname&pageNum=$page'
+            '&numberPerPage=$items_per_page&numberPerSection=5&enforceLanguage=&language'
+            'ToEnforce=&school=&position=&location=&court=&judge=&isFacetRefresh=false'
+        )
+        self.pub_url = 'https://www.morganlewis.com/api/sitecore/accordion/getaccordionlist'
+        super().__init__(*args, **kwargs)
 
     def start_requests(self):
-        yield SplashRequest('https://www.morganlewis.com/our-people/',
-                            self.parse,
-                            args={'wait': 5})
+
+        yield scrapy.Request(
+            self.url_api.substitute(page=self.page, items_per_page=self.items_per_page),
+            callback=self.parse
+        )
+        self.page += 1
 
     def parse(self, response):
-        people_total = int(response.xpath('//*[@class="c-results__total"]/span/text()').re(r'\((\d+)\)')[0])
+        urls = response.xpath('//*[@class="c-content_team__card-info"]/a/@href').getall()
 
-        url_api = (
-            f'https://www.morganlewis.com/api/sitecore/searchredesign/peopleresultslisting?'
-            f'keyword=&category=bb82d24a9d7a45bd938533994c4e775a&sortBy=lastname&pageNum=1'
-            f'&numberPerPage={people_total}&numberPerSection=5&enforceLanguage=&language'
-            f'ToEnforce=&school=&position=&location=&court=&judge=&isFacetRefresh=false'
-        )
+        for url in urls:
+            yield response.follow(url, callback=self.parse_item)
 
-        # Load 1 page with all people on it
-        page = urllib.request.urlopen(url_api)
-        selector = Selector(text=page.read())
-
-        # Get all urls to profile
-        profile_urls = selector.xpath('//*[@class="c-content_team__card-info"]/a/@href').extract()
-        for url in profile_urls:
-            yield SplashRequest(response.urljoin(url),
-                                self.parse_item,
-                                endpoint='execute',
-                                args={
-                                    'lua_source': self.script_load_publist,
-                                    'wait': 2
-                                }
-                                )
+        if len(urls) == self.items_per_page:
+            yield scrapy.Request(
+                self.url_api.substitute(page=self.page, items_per_page=self.items_per_page),
+                callback=self.parse
+            )
+            self.page += 1
 
     def parse_item(self, response):
-        item = MorganlewisItem()
+        item = PeopleItem()
 
         item['url'] = response.url
 
@@ -73,29 +56,36 @@ class PeopleSpider(Spider):
             response.xpath('//*[@class="person-heading"]//span/text()').get()
 
         item['position'] = \
-            response.xpath('//*[@class="person-heading"]/h2/text()').get().strip()
+            response.xpath('//*[@class="person-heading"]/h2/text()').get()
 
         item['phone_numbers'] = \
-            response.xpath('//*[@class="underline"]/a/text()').extract()
+            response.xpath('//*[@class="underline"]/a/text()').getall()
 
         item['email'] = \
-            response.xpath('//p[@class="bio-mail-id"]/a/text()').get().strip()
+            response.xpath('//p[@class="bio-mail-id"]/a/text()').get()
 
         item['services'] = \
-            response.xpath('//h2[text()="Services"]/following-sibling::ul/li/a/text()').extract()
+            response.xpath('//h2[text()="Services"]/following-sibling::ul/li/a/text()').getall()
 
         item['sectors'] = \
-            response.xpath('//h2[text()="Sectors"]/following-sibling::ul/li/a/text()').extract()
+            response.xpath('//h2[text()="Sectors"]/following-sibling::ul/li/a/text()').getall()
+
+        pub_response = requests.post(self.pub_url,
+                                     json={
+                                         "itemID": response.xpath('//script').re(r'itemID: "({.+})')[0],
+                                         "itemType": "publicationitemlist",
+                                         "printView": ""
+                                     }
+                                     )
+        selector = scrapy.selector.Selector(text=pub_response.text)
 
         item['publications'] = [
-            f"{publist.xpath('span/text()').get()} - {publist.xpath('text()').get().lstrip(' -')}" \
-                .replace('\n', '')
-            for publist
-            in response.xpath('//div[@class="hidden-cont" or @id="pubexpandlist"]/p/a[not(@data-show)]')
+            f'{sel.xpath("span/text()").get()}{sel.xpath("text()").get()}'.replace('\n', '')
+            for sel
+            in selector.xpath('//a[not(@class="more")]')
         ]
 
-        item['person_brief'] = \
-            response.xpath('//p[@class="heading-brief"]/text()').get().strip().replace('\n', '')
+        item['person_brief'] = response.xpath('//p[@class="heading-brief"]/text()').get()
 
         item['datetime_scrapped'] = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
 
