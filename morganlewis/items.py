@@ -22,7 +22,7 @@ class OrderedItem(Item):
         return json.dumps(OrderedDict(self), ensure_ascii = False)
 
 
-class MorganlewisItem(OrderedItem):
+class PeopleItem(OrderedItem):
     # define the fields for your item here like:
     url = Field()
     photo_url = Field()
