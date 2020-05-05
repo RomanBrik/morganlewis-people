@@ -11,24 +11,9 @@ Requirements
 Python pakages::
 
     1. scrapy
-    2. scrapy-splash
+    2. requests
 
-Configuration
-=============
-Before starting crawling
 
-1. Change the Splash server address to ``settings.py`` of your Scrapy project
-   like this::
-
-      SPLASH_URL = 'http://192.168.59.103:8050'
-      
-   or leave it::
-      
-      SPLASH_URL = 'http://localhost:8050'
-      
-2. Run a Splash instance in your project folder::
-
-    $ docker run -p 8050:8050 scrapinghub/splash
 
 Running the spider
 ==================
